@@ -73,7 +73,9 @@ class FaceDetector:
                 
                 # Extraire les points clés du visage (yeux, nez, bouche)
                 keypoints = {}
-                if detection.location_data.HasField('relative_keypoints'):
+                
+                # Vérifier si les points clés sont disponibles
+                if detection.location_data.relative_keypoints:
                     for idx, kp in enumerate(detection.location_data.relative_keypoints):
                         # Convertir les coordonnées relatives en coordonnées absolues
                         keypoints[idx] = {
