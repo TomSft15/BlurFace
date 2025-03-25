@@ -5,6 +5,7 @@ import store from './store'
 import Toast from 'vue-toastification/dist/index.mjs'
 import 'vue-toastification/dist/index.css'
 import './assets/tailwind.css'
+import '../styles/global.css'
 
 // Options pour vue-toastification
 const toastOptions = {
