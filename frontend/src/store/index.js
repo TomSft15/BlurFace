@@ -318,6 +318,41 @@ export default createStore({
           commit('SET_LOADING', false);
         }, 1000);
       }
+    },
+
+    async restartSessionWithSettings({ commit, state, dispatch }) {
+      if (!state.session.id) return;
+
+      try {
+        // Sauvegarder les paramètres actuels et les informations de session
+        const currentSession = { ...state.session };
+        const currentBlurSettings = { ...state.blurSettings };
+        const currentDetectionSettings = { ...state.detectionSettings };
+        const currentDisplaySettings = { ...state.displaySettings };
+        
+        // Fermer la session actuelle
+        commit('SET_LOADING', true);
+        await dispatch('closeSession');
+        
+        // Recréer une nouvelle session avec les mêmes paramètres source
+        await dispatch('createSession', {
+          sourceType: currentSession.sourceType,
+          deviceId: currentSession.deviceId,
+          filePath: currentSession.filePath
+        });
+        
+        // Réappliquer tous les paramètres
+        await dispatch('updateBlurSettings', currentBlurSettings);
+        await dispatch('updateDetectionSettings', currentDetectionSettings);
+        await dispatch('updateDisplaySettings', currentDisplaySettings);
+        
+        return true;
+      } catch (error) {
+        commit('SET_ERROR', 'Erreur lors du redémarrage de la session: ' + error.message);
+        throw error;
+      } finally {
+        commit('SET_LOADING', false);
+      }
     }
   }
 });

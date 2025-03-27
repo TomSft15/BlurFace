@@ -296,11 +296,17 @@
         <div v-if="hasActiveSession" class="control-panel">
           <div class="flex flex-wrap items-center gap-4">
             <label class="flex items-center cursor-pointer">
-              <input type="checkbox" v-model="displaySettings.drawDetections" class="form-checkbox h-4 w-4 text-primary-600 rounded focus:ring-primary-500 mr-2">
+              <input type="checkbox" 
+                    :checked="drawDetections" 
+                    @change="toggleDrawDetections" 
+                    class="form-checkbox h-4 w-4 text-primary-600 rounded focus:ring-primary-500 mr-2">
               <span>Afficher détections</span>
             </label>
             <label class="flex items-center cursor-pointer">
-              <input type="checkbox" v-model="displaySettings.applyBlur" class="form-checkbox h-4 w-4 text-primary-600 rounded focus:ring-primary-500 mr-2">
+              <input type="checkbox" 
+                    :checked="applyBlur" 
+                    @change="toggleApplyBlur" 
+                    class="form-checkbox h-4 w-4 text-primary-600 rounded focus:ring-primary-500 mr-2">
               <span>Appliquer floutage</span>
             </label>
             
@@ -328,16 +334,6 @@
                 </svg>
                 Télécharger
               </button>
-            </div>
-          </div>
-          
-          <div v-if="detections.faces.length > 0" class="mt-3 pt-3 border-t border-gray-200">
-            <div class="text-sm text-gray-700">
-              <strong>{{ detections.faces.length }}</strong> visage{{ detections.faces.length > 1 ? 's' : '' }} détecté{{ detections.faces.length > 1 ? 's' : '' }} - 
-              <strong>{{ blurSettings.selectedFaces === null ? 'Tous' : blurSettings.selectedFaces.length }}</strong> floué{{ blurSettings.selectedFaces === null || blurSettings.selectedFaces.length > 1 ? 's' : '' }}
-            </div>
-            <div class="text-xs text-gray-500">
-              Cliquez sur un cadre de détection pour inclure/exclure le visage du floutage
             </div>
           </div>
         </div>
@@ -405,44 +401,6 @@
               <div class="flex justify-between text-xs text-gray-500 mt-1">
                 <span>Faible</span>
                 <span>Fort</span>
-              </div>
-            </div>
-            
-            <div class="mb-4">
-              <label class="form-label">Sélection des visages</label>
-              <div class="flex">
-                <button 
-                  @click="selectAllFaces"
-                  :class="['source-button', blurSettings.selectedFaces === null ? 'active' : 'inactive']"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                  </svg>
-                  Tous
-                </button>
-                <button 
-                  @click="clearFaceSelection"
-                  :class="['source-button', blurSettings.selectedFaces?.length === 0 ? 'active' : 'inactive']"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
-                  </svg>
-                  Aucun
-                </button>
-              </div>
-              
-              <div v-if="detections.faces.length > 0" class="mt-2 text-sm bg-gray-50 p-3 rounded-lg border border-gray-200">
-                <div class="mb-1">
-                  Visages sélectionnés: 
-                  <span class="font-medium">
-                    <span v-if="blurSettings.selectedFaces === null">Tous</span>
-                    <span v-else-if="blurSettings.selectedFaces.length === 0">Aucun</span>
-                    <span v-else>{{ blurSettings.selectedFaces.join(', ') }}</span>
-                  </span>
-                </div>
-                <div class="text-xs text-gray-500">
-                  Cliquez sur les visages dans la vidéo pour les sélectionner individuellement
-                </div>
               </div>
             </div>
           </div>
@@ -527,16 +485,6 @@
         </div>
       </div>
     </div>
-    
-    <!-- Message d'erreur global -->
-    <div v-if="error" class="mt-4 alert alert-error">
-      <div class="flex items-center">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-        <p>{{ error }}</p>
-      </div>
-    </div>
   </div>
 </template>
 
@@ -578,7 +526,79 @@ export default {
     
     // Récupération des détections de visages toutes les 500ms
     let detectionsInterval = null;
-  
+    
+    // Fonction pour redémarrer le flux vidéo
+    const restartVideoStream = async () => {
+      if (store.getters.hasActiveSession) {
+        // Stocker l'ID de session actuel
+        const currentSettings = {
+          sourceType: store.state.session.sourceType,
+          deviceId: store.state.session.deviceId,
+          filePath: store.state.session.filePath,
+          blurSettings: {...store.state.blurSettings},
+          detectionSettings: {...store.state.detectionSettings}
+        };
+        
+        try {
+          // Fermer la session actuelle
+          await store.dispatch('closeSession');
+          
+          // Attendre un court instant pour que le backend puisse terminer proprement
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          // Recréer une nouvelle session avec les mêmes paramètres
+          await store.dispatch('createSession', {
+            sourceType: currentSettings.sourceType,
+            deviceId: currentSettings.deviceId,
+            filePath: currentSettings.filePath
+          });
+          
+          // Restaurer les paramètres de floutage et de détection
+          await store.dispatch('updateBlurSettings', currentSettings.blurSettings);
+          await store.dispatch('updateDetectionSettings', currentSettings.detectionSettings);
+          
+          console.log("Flux vidéo redémarré avec succès");
+        } catch (error) {
+          console.error('Erreur lors du redémarrage du flux vidéo:', error);
+        }
+      }
+    };
+
+    // Mise à jour de toggleDrawDetections
+    const toggleDrawDetections = async () => {
+      try {
+        // Inverser la valeur actuelle
+        const newValue = !store.state.displaySettings.drawDetections;
+        
+        // Mettre à jour le paramètre
+        await store.dispatch('updateDisplaySettings', {
+          ...store.state.displaySettings,
+          drawDetections: newValue
+        });
+        
+        // Redémarrer le flux vidéo pour éviter les problèmes
+        await restartVideoStream();
+      } catch (error) {
+        console.error('Erreur lors du changement de paramètre:', error);
+      }
+    };
+
+    // Mise à jour de toggleApplyBlur
+    const toggleApplyBlur = async () => {
+      try {
+        const newValue = !store.state.displaySettings.applyBlur;
+        await store.dispatch('updateDisplaySettings', {
+          ...store.state.displaySettings,
+          applyBlur: newValue
+        });
+        
+        // Redémarrer le flux vidéo pour éviter les problèmes
+        await restartVideoStream();
+      } catch (error) {
+        console.error('Erreur lors du changement de paramètre:', error);
+      }
+    };
+
     const downloadVideo = async () => {
       try {
         await store.dispatch('downloadVideo');
@@ -757,11 +777,6 @@ export default {
       return false;
     });
     
-    // Écouter les changements des paramètres d'affichage
-    watch(() => store.state.displaySettings, (newSettings) => {
-      store.dispatch('updateDisplaySettings', newSettings);
-    }, { deep: true });
-    
     return {
       // État de la source
       sourceType,
@@ -789,6 +804,8 @@ export default {
       isSelectedFace,
       downloadVideo,
       handleResize,
+      toggleDrawDetections,
+      toggleApplyBlur,
       
       // Accès à l'état
       session: computed(() => store.state.session),
@@ -800,12 +817,11 @@ export default {
       blurSettings: computed(() => store.state.blurSettings),
       detectionSettings: computed(() => store.state.detectionSettings),
       detections: computed(() => store.state.detections),
-      displaySettings: computed({
-        get: () => store.state.displaySettings,
-        set: (value) => store.dispatch('updateDisplaySettings', value)
-      }),
+      displaySettings: computed(() => store.state.displaySettings),
       loading: computed(() => store.state.loading),
       error: computed(() => store.state.error),
+      drawDetections: computed(() => store.state.displaySettings.drawDetections),
+      applyBlur: computed(() => store.state.displaySettings.applyBlur),
       canStartSession
     };
   }
