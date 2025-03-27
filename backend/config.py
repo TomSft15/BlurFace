@@ -11,12 +11,12 @@ os.makedirs(TEMP_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # Paramètres de détection des visages
-FACE_DETECTION_CONFIDENCE = 0.5
+FACE_DETECTION_CONFIDENCE = 0.3
 FACE_DETECTION_MODEL = "mediapipe"  # Options: 'mediapipe', 'opencv'
 
 # Paramètres de floutage
 DEFAULT_BLUR_METHOD = "gaussian"  # Options: 'gaussian', 'pixelate', 'solid'
-DEFAULT_BLUR_INTENSITY = 35  # Plus la valeur est élevée, plus le floutage est intense
+DEFAULT_BLUR_INTENSITY = 100  # Plus la valeur est élevée, plus le floutage est intense
 
 # Paramètres vidéo
 DEFAULT_FPS = 30
