@@ -61,15 +61,15 @@ class VideoProcessor:
             self.processing_status["error_message"] = f"Erreur lors de l'accès à la vidéo: {str(e)}"
     
     def process_video(self, 
-                     selected_faces: Optional[List[int]] = None, 
-                     draw_detections: bool = False) -> Dict[str, Any]:
+                 selected_faces: Optional[List[int]] = None, 
+                 draw_detections: bool = False) -> Dict[str, Any]:
         """
         Traite la vidéo complète en détectant et floutant les visages.
         
         Args:
             selected_faces: Liste des indices des visages à flouter (None = tous)
             draw_detections: Si True, dessine les rectangles de détection
-            
+                
         Returns:
             Dictionnaire avec le statut final du traitement
         """
@@ -103,11 +103,31 @@ class VideoProcessor:
                 (self.width, self.height)
             )
             
+            # Garde la dernière image valide
+            previous_frame = None
+            frames_failed = 0
+            max_failures = 5  # Nombre maximal d'échecs consécutifs tolérés
+            
             # Traiter chaque image
             while cap.isOpened():
                 ret, frame = cap.read()
                 if not ret:
-                    break
+                    # Si nous avons une image précédente et que c'est un échec temporaire
+                    if previous_frame is not None and frames_failed < max_failures:
+                        frame = previous_frame.copy()
+                        frames_failed += 1
+                        print(f"Frame read failed, using previous frame. Failures: {frames_failed}/{max_failures}")
+                    else:
+                        # Trop d'échecs consécutifs ou pas d'image précédente
+                        if frames_failed >= max_failures:
+                            print(f"Too many consecutive frame failures ({frames_failed}), stopping processing")
+                        break
+                else:
+                    # Réinitialiser le compteur d'échecs si on a lu une image avec succès
+                    frames_failed = 0
+                    # Sauvegarder l'image valide
+                    if frame is not None and frame.size > 0:
+                        previous_frame = frame.copy()
                 
                 # Détecter les visages
                 _, faces_data = self.face_detector.detect_faces(frame)
@@ -166,7 +186,7 @@ class VideoProcessor:
                 out.release()
         
         return self.processing_status
-    
+
     def get_status(self) -> Dict[str, Any]:
         """Retourne le statut actuel du traitement."""
         return self.processing_status

@@ -65,7 +65,7 @@ class BlurProcessor:
             image: Image au format numpy array
             faces_data: Liste des visages détectés avec leurs coordonnées et scores
             selected_faces: Liste des indices des visages à flouter (None = tous)
-            
+                
         Returns:
             Image avec les visages floutés
         """
@@ -89,16 +89,25 @@ class BlurProcessor:
         for idx in faces_to_blur:
             if idx < len(faces_data):
                 face = faces_data[idx]
-                bbox = face['bbox']
+                bbox = face['bbox'].copy()  # Créer une copie pour éviter de modifier l'original
                 
-                # Vérifier les coordonnées du visage
-                if (bbox['xmin'] >= bbox['xmax'] or 
-                    bbox['ymin'] >= bbox['ymax'] or 
-                    bbox['xmin'] < 0 or 
-                    bbox['ymin'] < 0 or 
-                    bbox['xmax'] > result_image.shape[1] or 
-                    bbox['ymax'] > result_image.shape[0]):
-                    print(f"Coordonnées de visage invalides: {bbox}")
+                # Ajuster les coordonnées si elles sont hors limites
+                if bbox['xmin'] < 0:
+                    bbox['width'] += bbox['xmin']  # Réduire la largeur
+                    bbox['xmin'] = 0
+                if bbox['ymin'] < 0:
+                    bbox['height'] += bbox['ymin']  # Réduire la hauteur
+                    bbox['ymin'] = 0
+                if bbox['xmax'] > result_image.shape[1]:
+                    bbox['xmax'] = result_image.shape[1]
+                    bbox['width'] = bbox['xmax'] - bbox['xmin']
+                if bbox['ymax'] > result_image.shape[0]:
+                    bbox['ymax'] = result_image.shape[0]
+                    bbox['height'] = bbox['ymax'] - bbox['ymin']
+                
+                # Vérifier à nouveau si la boîte est valide après ajustements
+                if bbox['width'] <= 0 or bbox['height'] <= 0:
+                    print(f"Boîte englobante trop petite après ajustement: {bbox}")
                     continue
                 
                 try:
@@ -133,7 +142,7 @@ class BlurProcessor:
                     continue
         
         return result_image
-    
+
     def _apply_gaussian_blur(self, face_region: np.ndarray) -> np.ndarray:
         """
         Applique un flou gaussien à la région du visage.

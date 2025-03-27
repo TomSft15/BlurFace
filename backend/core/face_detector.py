@@ -44,53 +44,80 @@ class FaceDetector:
                 - L'image annotée avec les détections (si draw est True)
                 - Liste des visages détectés avec leurs coordonnées et scores
         """
-        # Convertir l'image BGR en RGB
-        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        image_height, image_width, _ = image.shape
-        
-        # Traiter l'image avec MediaPipe
-        results = self.face_detection.process(image_rgb)
-        
-        # Préparer les données à retourner
-        faces_data = []
-        
-        # Traiter les résultats
-        if results.detections:
-            for detection in results.detections:
-                # Obtenir le rectangle englobant (bounding box)
-                bboxC = detection.location_data.relative_bounding_box
-                bbox = {
-                    'xmin': int(bboxC.xmin * image_width),
-                    'ymin': int(bboxC.ymin * image_height),
-                    'width': int(bboxC.width * image_width),
-                    'height': int(bboxC.height * image_height),
-                    'score': float(detection.score[0])
-                }
-                
-                # Calculer les coordonnées maximales pour faciliter l'utilisation
-                bbox['xmax'] = bbox['xmin'] + bbox['width']
-                bbox['ymax'] = bbox['ymin'] + bbox['height']
-                
-                # Extraire les points clés du visage (yeux, nez, bouche)
-                keypoints = {}
-                
-                # Vérifier si les points clés sont disponibles
-                if detection.location_data.relative_keypoints:
-                    for idx, kp in enumerate(detection.location_data.relative_keypoints):
-                        # Convertir les coordonnées relatives en coordonnées absolues
-                        keypoints[idx] = {
-                            'x': int(kp.x * image_width),
-                            'y': int(kp.y * image_height)
+        try:
+            # Vérifier que l'image est valide
+            if image is None or image.size == 0:
+                print("Image vide reçue dans detect_faces")
+                return image, []
+            
+            # Convertir l'image BGR en RGB
+            image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            image_height, image_width, _ = image.shape
+            
+            # Traiter l'image avec MediaPipe
+            results = self.face_detection.process(image_rgb)
+            
+            # Préparer les données à retourner
+            faces_data = []
+            
+            # Traiter les résultats
+            if results.detections:
+                for detection in results.detections:
+                    try:
+                        # Obtenir le rectangle englobant (bounding box)
+                        bboxC = detection.location_data.relative_bounding_box
+                        
+                        # Calculer les coordonnées absolues
+                        xmin = max(0, int(bboxC.xmin * image_width))
+                        ymin = max(0, int(bboxC.ymin * image_height))
+                        width = min(int(bboxC.width * image_width), image_width - xmin)
+                        height = min(int(bboxC.height * image_height), image_height - ymin)
+                        
+                        # Vérifier que les dimensions sont valides
+                        if width <= 0 or height <= 0:
+                            print(f"Dimensions invalides détectées : {width}x{height}")
+                            continue
+                        
+                        bbox = {
+                            'xmin': xmin,
+                            'ymin': ymin,
+                            'width': width,
+                            'height': height,
+                            'score': float(detection.score[0])
                         }
-                
-                # Ajouter les données du visage à la liste
-                faces_data.append({
-                    'bbox': bbox,
-                    'keypoints': keypoints,
-                    'score': float(detection.score[0])
-                })
+                        
+                        # Calculer les coordonnées maximales pour faciliter l'utilisation
+                        bbox['xmax'] = bbox['xmin'] + bbox['width']
+                        bbox['ymax'] = bbox['ymin'] + bbox['height']
+                        
+                        # Extraire les points clés du visage (yeux, nez, bouche)
+                        keypoints = {}
+                        
+                        # Vérifier si les points clés sont disponibles
+                        if detection.location_data.relative_keypoints:
+                            for idx, kp in enumerate(detection.location_data.relative_keypoints):
+                                # Convertir les coordonnées relatives en coordonnées absolues
+                                keypoints[idx] = {
+                                    'x': int(kp.x * image_width),
+                                    'y': int(kp.y * image_height)
+                                }
+                        
+                        # Ajouter les données du visage à la liste
+                        faces_data.append({
+                            'bbox': bbox,
+                            'keypoints': keypoints,
+                            'score': float(detection.score[0])
+                        })
+                    
+                    except Exception as e:
+                        print(f"Erreur lors du traitement d'une détection : {e}")
+                        continue
+            
+            return image, faces_data
         
-        return image, faces_data
+        except Exception as e:
+            print(f"Erreur globale dans detect_faces : {e}")
+            return image, []
     
     def draw_detections(self, image: np.ndarray, faces_data: List[Dict[str, Any]]) -> np.ndarray:
         """

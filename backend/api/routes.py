@@ -4,15 +4,15 @@ Routes API pour l'application Blur Face utilisant Flask-RESTX.
 
 import os
 import time
-import json
 import uuid
-from typing import Dict, List, Any, Optional
+from typing import Dict, Any, Optional
 import cv2
 import numpy as np
-from flask import Flask, request, Response, send_from_directory, jsonify
+from flask import Flask, request, Response
 from flask_restx import Api, Resource, fields, Namespace
 import base64
-from copy import deepcopy
+from werkzeug.utils import secure_filename
+from flask import send_file
 
 
 from core.face_detector import FaceDetector
@@ -73,36 +73,53 @@ class VideoSession:
             
     def get_frame(self) -> Optional[np.ndarray]:
         """Récupère une image de la source vidéo."""
-        try:
-            if not self.is_running or self.cap is None:
-                print("Session not running or capture not initialized")
-                return None
-                
-            ret, frame = self.cap.read()
-            if not ret or frame is None or frame.size == 0:
-                print("Failed to read frame or empty frame")
-                # Réinitialiser la capture si possible
-                if self.source_type == "webcam":
-                    self.cap.release()
-                    self.cap = cv2.VideoCapture(self.device_id)
-                elif self.source_type == "file":
-                    self.cap.release()
-                    self.cap = cv2.VideoCapture(self.file_path)
-                
-                # Vérifier à nouveau après réinitialisation
+        max_retries = 3
+        retry_count = 0
+        
+        while retry_count < max_retries:
+            try:
+                if not self.is_running or self.cap is None:
+                    print("Session not running or capture not initialized")
+                    return None
+                    
                 ret, frame = self.cap.read()
                 if not ret or frame is None or frame.size == 0:
-                    print("Capture still unable to read frame")
-                    self.is_running = False
-                    return None
+                    print(f"Failed to read frame or empty frame (attempt {retry_count+1}/{max_retries})")
+                    
+                    # Si c'est un fichier vidéo et nous sommes à la fin, réinitialiser
+                    if self.source_type == "file" and self.cap.get(cv2.CAP_PROP_POS_FRAMES) >= self.cap.get(cv2.CAP_PROP_FRAME_COUNT):
+                        print("End of video file reached, resetting to beginning")
+                        self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                        ret, frame = self.cap.read()
+                        if ret and frame is not None and frame.size > 0:
+                            self.frame_count += 1
+                            self.last_frame = frame
+                            return frame
+                    
+                    # Réinitialiser la capture si possible après un délai
+                    time.sleep(0.1)  # Petit délai avant de réessayer
+                    if self.source_type == "webcam":
+                        self.cap.release()
+                        self.cap = cv2.VideoCapture(self.device_id)
+                    elif self.source_type == "file":
+                        self.cap.release()
+                        self.cap = cv2.VideoCapture(self.file_path)
+                    
+                    retry_count += 1
+                    continue
                 
-            self.frame_count += 1
-            self.last_frame = frame
-            return frame
-        except Exception as e:
-            print(f"Error in get_frame: {e}")
-            self.is_running = False
-            return None
+                self.frame_count += 1
+                self.last_frame = frame
+                return frame
+            
+            except Exception as e:
+                print(f"Error in get_frame: {e}")
+                retry_count += 1
+                time.sleep(0.1)
+        
+        print("Maximum retries reached, unable to get frame")
+        # Si toutes les tentatives échouent, retourner la dernière image valide ou None
+        return self.last_frame
         
     def process_frame(self, frame: np.ndarray, draw_detections: bool = False, apply_blur: bool = True) -> Dict[str, Any]:
         """Traite une image pour détecter et flouter les visages."""
@@ -625,3 +642,138 @@ def configure_routes(app: Flask, api: Api):
                 generate_frames(draw_detections, apply_blur),
                 mimetype='multipart/x-mixed-replace; boundary=frame'
             )
+    @ns_videos.route('/upload')
+    class VideoUploadResource(Resource):
+        @ns_videos.doc('upload_video')
+        def post(self):
+            """Télécharge un fichier vidéo et retourne des informations sur celui-ci"""
+            try:
+                # Vérifier si le fichier est présent dans la requête
+                if 'file' not in request.files:
+                    return {
+                        "success": False,
+                        "error": "Aucun fichier trouvé dans la requête"
+                    }, 400
+                    
+                file = request.files['file']
+                
+                # Vérifier que le nom n'est pas vide
+                if file.filename == '':
+                    return {
+                        "success": False,
+                        "error": "Nom de fichier vide"
+                    }, 400
+                
+                # Sécuriser le nom du fichier
+                filename = secure_filename(file.filename)
+                
+                # Créer le chemin complet
+                file_path = os.path.join(config.TEMP_DIR, filename)
+                
+                # Sauvegarder le fichier
+                file.save(file_path)
+                
+                # Obtenir les informations sur le fichier
+                video_info = get_video_info(file_path)
+                
+                if video_info["success"]:
+                    return {
+                        "success": True,
+                        "file_path": file_path,
+                        "video_info": video_info
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "error": "Fichier téléchargé, mais impossible d'obtenir les informations de la vidéo"
+                    }, 400
+                    
+            except Exception as e:
+                return {
+                    "success": False,
+                    "error": str(e)
+                }, 500
+    @ns_session.route('/<string:session_id>/download')
+    @ns_session.param('session_id', 'Identifiant de la session')
+    class DownloadVideoResource(Resource):
+        @ns_session.doc('download_processed_video')
+        def get(self, session_id):
+            """Traite et permet le téléchargement de la vidéo avec les visages floutés"""
+            if session_id not in ACTIVE_SESSIONS:
+                return {
+                    "success": False,
+                    "error": "Session non trouvée"
+                }, 404
+            
+            session = ACTIVE_SESSIONS[session_id]
+            
+            try:
+                # Générer un nom de fichier temporaire
+                timestamp = time.strftime("%Y%m%d-%H%M%S")
+                temp_output_path = os.path.join(config.TEMP_DIR, f"download_{timestamp}.mp4")
+                
+                # Traiter la vidéo (de façon synchrone pour un téléchargement immédiat)
+                from utils.video_utils import VideoProcessor
+                
+                # Pour les webcams, nous devons d'abord capturer quelques secondes de vidéo
+                if session.source_type == "webcam":
+                    # Capturer 5 secondes de webcam dans un fichier temporaire
+                    webcam_capture_path = os.path.join(config.TEMP_DIR, f"webcam_capture_{timestamp}.mp4")
+                    frames_to_capture = 5 * 30  # 5 seconds at 30 FPS
+                    
+                    # Configurer l'enregistreur vidéo
+                    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+                    out = cv2.VideoWriter(
+                        webcam_capture_path,
+                        fourcc,
+                        30,  # FPS
+                        (session.cap.get(cv2.CAP_PROP_FRAME_WIDTH), session.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                    )
+                    
+                    # Capturer les images
+                    frames_captured = 0
+                    while frames_captured < frames_to_capture:
+                        ret, frame = session.cap.read()
+                        if not ret:
+                            break
+                        out.write(frame)
+                        frames_captured += 1
+                    
+                    out.release()
+                    input_path = webcam_capture_path
+                else:
+                    # Pour les fichiers vidéo, utiliser le chemin existant
+                    input_path = session.file_path
+                
+                # Traiter la vidéo
+                processor = VideoProcessor(
+                    input_path,
+                    temp_output_path,
+                    session.face_detector,
+                    session.blur_processor
+                )
+                
+                processing_status = processor.process_video(
+                    selected_faces=session.selected_faces,
+                    draw_detections=False  # Ne pas dessiner les détections pour le téléchargement
+                )
+                
+                if processing_status["status"] == "completed":
+                    # Renvoyer le fichier pour téléchargement
+                    return send_file(
+                        temp_output_path,
+                        mimetype='video/mp4',
+                        as_attachment=True,
+                        download_name=f"blurface_video_{timestamp}.mp4"
+                    )
+                else:
+                    return {
+                        "success": False,
+                        "error": processing_status.get("error_message", "Échec du traitement vidéo")
+                    }, 500
+                    
+            except Exception as e:
+                return {
+                    "success": False,
+                    "error": str(e)
+                }, 500
