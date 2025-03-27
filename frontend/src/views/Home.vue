@@ -387,7 +387,7 @@
             
             <div class="slider-container">
               <div class="slider-label">
-                <span class="slider-label-text">Intensité</span>
+                <span class="slider-label-text">Intensité </span>
                 <span class="slider-value">{{ blurSettings.intensity }}</span>
               </div>
               <input 
@@ -416,7 +416,7 @@
             
             <div class="slider-container">
               <div class="slider-label">
-                <span class="slider-label-text">Seuil de confiance</span>
+                <span class="slider-label-text">Seuil de confiance </span>
                 <span class="slider-value">{{ (detectionSettings.minConfidence * 100).toFixed(0) }}%</span>
               </div>
               <input 

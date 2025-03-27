@@ -14,12 +14,12 @@ export default createStore({
     // Paramètres de floutage
     blurSettings: {
       method: 'gaussian', // 'gaussian', 'pixelate', 'solid'
-      intensity: 35,
+      intensity: 100, // 0-100
       selectedFaces: null // null = tous les visages
     },
     // Paramètres de détection
     detectionSettings: {
-      minConfidence: 0.5,
+      minConfidence: 0.3, // 0-1
       modelSelection: 1
     },
     // Liste des webcams disponibles
