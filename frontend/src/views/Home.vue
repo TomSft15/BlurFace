@@ -233,12 +233,14 @@
           
           <!-- Bouton de sauvegarde -->
           <button 
+            @click="downloadVideo" 
             class="btn btn-outline w-full mt-3 flex items-center justify-center"
+            :disabled="loading"
           >
             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
             </svg>
-            Enregistrer la vidéo
+            Télécharger la vidéo
           </button>
         </div>
       </div>
@@ -278,7 +280,7 @@
             <!-- Overlay pour les visages détectés -->
             <div 
               v-for="(face, index) in detections.faces" 
-              :key="index"
+              :key="`face-${index}-${faceBoxesKey}`"
               :style="getFaceBoxStyle(face.bbox)"
               :class="['face-box', isSelectedFace(index) ? 'border-primary-500' : 'border-blue-500']"
               @click="toggleFaceSelection(index)"
@@ -314,6 +316,17 @@
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
                 </svg>
                 Enregistrer
+              </button>
+
+              <button 
+                class="btn btn-sm btn-primary flex items-center" 
+                @click="downloadVideo" 
+                :disabled="loading"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                Télécharger
               </button>
             </div>
           </div>
@@ -528,7 +541,7 @@
 </template>
 
 <script>
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { useStore } from 'vuex';
 
 export default {
@@ -550,11 +563,30 @@ export default {
     // Chargement initial des webcams
     onMounted(() => {
       loadWebcams();
+      window.addEventListener('resize', handleResize);
     });
+
+    onUnmounted(() => {
+      window.removeEventListener('resize', handleResize);
+    });
+
+    const handleResize = () => {
+      faceBoxesKey.value += 1;
+    };
+
+    const faceBoxesKey = ref(0);
     
     // Récupération des détections de visages toutes les 500ms
     let detectionsInterval = null;
-    
+  
+    const downloadVideo = async () => {
+      try {
+        await store.dispatch('downloadVideo');
+      } catch (error) {
+        console.error('Erreur lors du téléchargement de la vidéo:', error);
+      }
+    };
+
     watch(() => store.getters.hasActiveSession, (isActive) => {
       if (isActive) {
         // Démarrer la récupération périodique des détections
@@ -586,22 +618,12 @@ export default {
       
       videoFile.value = file;
       
-      // Utilisez un chemin temporaire pour le test
-      // Dans une vraie application, vous devriez télécharger le fichier au serveur
-      filePath.value = `/temp/${file.name}`;
-      
       try {
-        // Simuler le chargement des infos vidéo
-        // Dans une vraie application, vous appelleriez l'API
-        store.commit('SET_VIDEO_INFO', {
-          filename: file.name,
-          width: 1280,
-          height: 720,
-          fps: 30,
-          duration: 60,
-          duration_str: '00:01:00',
-          format: file.name.split('.').pop().toUpperCase()
-        });
+        // Utiliser l'action du store pour télécharger le fichier
+        const uploadedFilePath = await store.dispatch('uploadVideo', file);
+        
+        // Mettre à jour le chemin du fichier
+        filePath.value = uploadedFilePath;
       } catch (error) {
         console.error('Erreur lors du chargement des informations vidéo:', error);
       }
@@ -698,11 +720,25 @@ export default {
     
     // Style pour les rectangles de détection des visages
     const getFaceBoxStyle = (bbox) => {
+      // Récupérer les dimensions actuelles de l'image affichée
+      const videoElement = document.querySelector('.video-frame');
+      
+      if (!videoElement || !bbox) return {};
+      
+      // Obtenir les dimensions réelles de l'élément dans le DOM
+      const displayedWidth = videoElement.offsetWidth;
+      const displayedHeight = videoElement.offsetHeight;
+      
+      // Calculer les ratios d'échelle
+      const widthRatio = displayedWidth / store.state.detections.width;
+      const heightRatio = displayedHeight / store.state.detections.height;
+      
+      // Appliquer les ratios aux coordonnées
       return {
-        left: `${bbox.xmin}px`,
-        top: `${bbox.ymin}px`,
-        width: `${bbox.width}px`,
-        height: `${bbox.height}px`
+        left: `${bbox.xmin * widthRatio}px`,
+        top: `${bbox.ymin * heightRatio}px`,
+        width: `${bbox.width * widthRatio}px`,
+        height: `${bbox.height * heightRatio}px`
       };
     };
     
@@ -751,6 +787,8 @@ export default {
       clearFaceSelection,
       getFaceBoxStyle,
       isSelectedFace,
+      downloadVideo,
+      handleResize,
       
       // Accès à l'état
       session: computed(() => store.state.session),
@@ -795,6 +833,7 @@ export default {
 /* Styles pour l'écran vidéo */
 .video-container {
   @apply relative overflow-hidden rounded-lg border-2 border-gray-200 bg-gray-100;
+  position: relative;
 }
 
 .video-placeholder {
@@ -803,10 +842,12 @@ export default {
 
 .video-frame {
   @apply w-full aspect-video object-cover;
+  display: block;
 }
 
 .face-box {
   @apply absolute border-2 cursor-pointer transition-all duration-200;
+  z-index: 10;
 }
 
 .face-box:hover {

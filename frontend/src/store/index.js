@@ -262,8 +262,62 @@ export default createStore({
     },
     
     // Mettre à jour les paramètres d'affichage
-    updateDisplaySettings({ commit }, settings) {
+    async updateDisplaySettings({ commit }, settings) {
       commit('SET_DISPLAY_SETTINGS', settings);
+    },
+
+    // Ajouter cette action dans la section actions du store
+    async uploadVideo({ commit }, file) {
+      try {
+        commit('SET_LOADING', true);
+        commit('SET_ERROR', null);
+        
+        // Appel à l'API pour télécharger le fichier
+        const response = await api.videoService.uploadVideo(file);
+        
+        if (response.data.success) {
+          // Mettre à jour les informations du fichier et de la vidéo
+          commit('SET_VIDEO_INFO', response.data.video_info);
+          return response.data.file_path;
+        } else {
+          throw new Error(response.data.error || 'Échec du téléchargement de la vidéo');
+        }
+      } catch (error) {
+        commit('SET_ERROR', 'Erreur lors du téléchargement: ' + error.message);
+        throw error;
+      } finally {
+        commit('SET_LOADING', false);
+      }
+    },
+
+    // Ajouter cette action dans la section actions du store
+    async downloadVideo({ commit, state }) {
+      if (!state.session.id) return;
+      
+      try {
+        commit('SET_LOADING', true);
+        
+        // Créer un lien de téléchargement
+        const downloadUrl = api.sessionService.getDownloadUrl(state.session.id);
+        
+        // Créer un lien invisible et déclencher le téléchargement
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = `video_floutee_${new Date().toISOString().replace(/:/g, '-')}.mp4`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        return true;
+      } catch (error) {
+        commit('SET_ERROR', 'Erreur lors du téléchargement: ' + error.message);
+        throw error;
+      } finally {
+        // Masquer l'indicateur de chargement après un court délai
+        setTimeout(() => {
+          commit('SET_LOADING', false);
+        }, 1000);
+      }
     }
   }
 });

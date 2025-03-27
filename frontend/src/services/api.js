@@ -94,6 +94,10 @@ const sessionService = {
       apply_blur: applyBlur
     });
     return `${apiClient.defaults.baseURL}/session/${sessionId}/stream?${params.toString()}`;
+  },
+  // Dans sessionService
+  getDownloadUrl(sessionId) {
+    return `${apiClient.defaults.baseURL}/session/${sessionId}/download`;
   }
 };
 
@@ -119,7 +123,18 @@ const videoService = {
     return apiClient.post('/videos/info', {
       file_path: filePath
     });
-  }
+  },
+
+  uploadVideo(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    return apiClient.post('/videos/upload', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    });
+  },
 };
 
 export default {
