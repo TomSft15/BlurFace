@@ -1,7 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import HomeView from '../views/Home.vue'
 import AboutView from '../views/About.vue'
-import GalleryView from '../views/Gallery.vue'
 import SettingsView from '../views/Settings.vue'
 import HelpView from '../views/Help.vue'
 
@@ -11,12 +10,6 @@ const routes = [
     name: 'home',
     component: HomeView,
     meta: { title: 'Accueil - BlurFace' }
-  },
-  {
-    path: '/gallery',
-    name: 'gallery',
-    component: GalleryView,
-    meta: { title: 'Galerie - BlurFace' }
   },
   {
     path: '/settings',
