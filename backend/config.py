@@ -11,7 +11,7 @@ os.makedirs(TEMP_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # Paramètres de détection des visages
-FACE_DETECTION_CONFIDENCE = 0.3
+FACE_DETECTION_CONFIDENCE = 0.1
 FACE_DETECTION_MODEL = "mediapipe"  # Options: 'mediapipe', 'opencv'
 
 # Paramètres de floutage
