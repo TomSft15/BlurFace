@@ -395,72 +395,146 @@ def configure_routes(app: Flask, api: Api):
                 "success": False,
                 "error": "Session non trouvée"
             }, 404
-    
-    # Mettre à jour les paramètres de floutage
+
     @ns_session.route('/<string:session_id>/blur-settings')
     @ns_session.param('session_id', 'Identifiant de la session')
     class BlurSettingsResource(Resource):
         @ns_session.doc('update_blur_settings')
-        @ns_session.expect(blur_settings_model)
+        # @ns_session.expect(blur_settings_model)  # Commentez ou supprimez cette ligne
         @ns_session.marshal_with(success_model, code=200)
         @ns_session.marshal_with(error_model, code=404)
         def put(self, session_id):
             """Mettre à jour les paramètres de floutage"""
-            if session_id not in ACTIVE_SESSIONS:
+            try:
+                if session_id not in ACTIVE_SESSIONS:
+                    return {
+                        "success": False,
+                        "error": "Session non trouvée"
+                    }, 404
+                
+                # Récupérer les données de la requête
+                data = request.json
+                print(f"Données reçues pour blur-settings: {data}")  # Ajout d'un log pour déboguer
+                
+                session = ACTIVE_SESSIONS[session_id]
+                
+                # Mettre à jour la méthode de floutage si présente
+                if 'method' in data:
+                    method = data['method']
+                    print(f"Mise à jour de la méthode de floutage: {method}")
+                    # Vérifier que la méthode est valide
+                    valid_methods = ['gaussian', 'pixelate', 'solid']
+                    if method not in valid_methods:
+                        return {
+                            "success": False,
+                            "error": f"Méthode de floutage invalide. Doit être l'une de: {valid_methods}"
+                        }, 400
+                    session.blur_processor.blur_method = method  # Affectation directe plutôt que d'utiliser la méthode
+                
+                # Mettre à jour l'intensité de floutage si présente
+                if 'intensity' in data:
+                    intensity = data['intensity']
+                    print(f"Mise à jour de l'intensité de floutage: {intensity}")
+                    # Vérifier que l'intensité est valide
+                    if not isinstance(intensity, int) or intensity < 1 or intensity > 100:
+                        return {
+                            "success": False,
+                            "error": "L'intensité doit être un entier entre 1 et 100"
+                        }, 400
+                    session.blur_processor.blur_intensity = intensity  # Affectation directe
+                
+                # Mettre à jour les visages sélectionnés si présents
+                if 'selected_faces' in data:
+                    selected_faces = data['selected_faces']
+                    print(f"Mise à jour des visages sélectionnés: {selected_faces}")
+                    session.selected_faces = selected_faces
+                
+                return {"success": True}
+                
+            except Exception as e:
+                print(f"Erreur lors de la mise à jour des paramètres de floutage: {e}")
                 return {
                     "success": False,
-                    "error": "Session non trouvée"
-                }, 404
-            
-            data = request.json
-            session = ACTIVE_SESSIONS[session_id]
-            
-            if 'method' in data:
-                session.blur_processor.set_blur_method(data['method'])
-            
-            if 'intensity' in data:
-                session.blur_processor.set_blur_intensity(data['intensity'])
-            
-            if 'selected_faces' in data:
-                session.selected_faces = data['selected_faces']
-            
-            return {"success": True}
-    
+                    "error": f"Erreur serveur: {str(e)}"
+                }, 500
+
+
     # Mettre à jour les paramètres de détection
     @ns_session.route('/<string:session_id>/detection-settings')
     @ns_session.param('session_id', 'Identifiant de la session')
     class DetectionSettingsResource(Resource):
         @ns_session.doc('update_detection_settings')
-        @ns_session.expect(detection_settings_model)
+        # @ns_session.expect(detection_settings_model)  # Commentez ou supprimez cette ligne
         @ns_session.marshal_with(success_model, code=200)
         @ns_session.marshal_with(error_model, code=404)
         def put(self, session_id):
             """Mettre à jour les paramètres de détection des visages"""
-            if session_id not in ACTIVE_SESSIONS:
-                return {
-                    "success": False,
-                    "error": "Session non trouvée"
-                }, 404
-            
-            data = request.json
-            session = ACTIVE_SESSIONS[session_id]
-            
-            # Créer un nouveau détecteur avec les nouveaux paramètres
-            if 'min_confidence' in data or 'model_selection' in data:
-                min_confidence = data.get('min_confidence', config.FACE_DETECTION_CONFIDENCE)
-                model_selection = data.get('model_selection', 1)
+            try:
+                if session_id not in ACTIVE_SESSIONS:
+                    return {
+                        "success": False,
+                        "error": "Session non trouvée"
+                    }, 404
+                
+                # Récupérer les données de la requête
+                data = request.json
+                print(f"Données reçues pour detection-settings: {data}")  # Ajout d'un log pour déboguer
+                
+                session = ACTIVE_SESSIONS[session_id]
+                
+                # Paramètres à mettre à jour
+                min_confidence = None
+                model_selection = None
+                
+                # Récupérer le seuil de confiance minimum s'il est présent
+                if 'min_confidence' in data:
+                    min_confidence = data['min_confidence']
+                    print(f"Mise à jour du seuil de confiance: {min_confidence}")
+                    
+                    # Vérifier que le seuil est valide
+                    if not isinstance(min_confidence, (int, float)) or min_confidence < 0 or min_confidence > 1:
+                        return {
+                            "success": False,
+                            "error": "Le seuil de confiance doit être un nombre entre 0 et 1"
+                        }, 400
+                
+                # Récupérer la sélection du modèle si elle est présente
+                if 'model_selection' in data:
+                    model_selection = data['model_selection']
+                    print(f"Mise à jour de la sélection du modèle: {model_selection}")
+                    
+                    # Vérifier que la sélection est valide
+                    if not isinstance(model_selection, int) or model_selection not in [0, 1]:
+                        return {
+                            "success": False,
+                            "error": "La sélection du modèle doit être 0 ou 1"
+                        }, 400
                 
                 # Libérer l'ancien détecteur
                 session.face_detector.release()
                 
+                # Créer un nouveau détecteur avec les paramètres mis à jour
+                # Si un paramètre n'est pas spécifié, utiliser la valeur actuelle
+                new_min_confidence = min_confidence if min_confidence is not None else config.FACE_DETECTION_CONFIDENCE
+                new_model_selection = model_selection if model_selection is not None else 1
+                
+                print(f"Création d'un nouveau détecteur avec: min_confidence={new_min_confidence}, model_selection={new_model_selection}")
+                
                 # Créer un nouveau détecteur
                 session.face_detector = FaceDetector(
-                    min_detection_confidence=min_confidence,
-                    model_selection=model_selection
+                    min_detection_confidence=new_min_confidence,
+                    model_selection=new_model_selection
                 )
-            
-            return {"success": True}
-    
+                
+                return {"success": True}
+                
+            except Exception as e:
+                print(f"Erreur lors de la mise à jour des paramètres de détection: {e}")
+                return {
+                    "success": False,
+                    "error": f"Erreur serveur: {str(e)}"
+                }, 500
+
     # Récupérer une image détectée/floutée
     @ns_session.route('/<string:session_id>/frame')
     @ns_session.param('session_id', 'Identifiant de la session')

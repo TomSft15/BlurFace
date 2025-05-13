@@ -472,6 +472,7 @@ export default {
   
   setup() {
     const store = useStore();
+    const streamKey = ref(Date.now());
     
     // Source vidéo
     const sourceType = ref('webcam');
@@ -537,6 +538,11 @@ export default {
           console.error('Erreur lors du redémarrage du flux vidéo:', error);
         }
       }
+    };
+
+    const forceStreamRefresh = () => {
+      // Génère une nouvelle clé aléatoire pour forcer le rechargement de l'image
+      streamKey.value = Date.now();
     };
 
     // Mise à jour de toggleDrawDetections
@@ -643,29 +649,33 @@ export default {
     };
     
     // Mise à jour des paramètres de floutage
-    const updateBlurMethod = (method) => {
-      store.dispatch('updateBlurSettings', { ...store.state.blurSettings, method });
+    const updateBlurMethod = async (method) => {
+      await store.dispatch('updateBlurSettings', { ...store.state.blurSettings, method });
+      forceStreamRefresh();
     };
-    
-    const updateBlurIntensity = () => {
-      store.dispatch('updateBlurSettings', { ...store.state.blurSettings, intensity: blurIntensity.value });
+
+    const updateBlurIntensity = async () => {
+      await store.dispatch('updateBlurSettings', { ...store.state.blurSettings, intensity: blurIntensity.value });
+      forceStreamRefresh();
     };
-    
+
     // Mise à jour des paramètres de détection
-    const updateConfidenceThreshold = () => {
-      store.dispatch('updateDetectionSettings', {
+    const updateConfidenceThreshold = async () => {
+      await store.dispatch('updateDetectionSettings', {
         ...store.state.detectionSettings,
         minConfidence: confidenceThreshold.value / 100
       });
+      forceStreamRefresh();
     };
-    
-    const updateModelSelection = (model) => {
-      store.dispatch('updateDetectionSettings', {
+
+    const updateModelSelection = async (model) => {
+      await store.dispatch('updateDetectionSettings', {
         ...store.state.detectionSettings,
         modelSelection: model
       });
+      forceStreamRefresh();
     };
-    
+
     // Gestion de la sélection des visages
     const toggleFaceSelection = (faceIndex) => {
       let selectedFaces = store.state.blurSettings.selectedFaces;
@@ -762,8 +772,10 @@ export default {
       // Paramètres temporaires
       blurIntensity,
       confidenceThreshold,
+      streamKey,
       
       // Méthodes
+      forceStreamRefresh,
       loadWebcams,
       handleFileUpload,
       startSession,

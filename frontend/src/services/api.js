@@ -91,10 +91,13 @@ const sessionService = {
   getStreamUrl(sessionId, drawDetections = false, applyBlur = true) {
     const params = new URLSearchParams({
       draw_detections: drawDetections,
-      apply_blur: applyBlur
+      apply_blur: applyBlur,
+      // Ajouter un timestamp pour éviter la mise en cache du navigateur
+      t: Date.now()
     });
     return `${apiClient.defaults.baseURL}/session/${sessionId}/stream?${params.toString()}`;
   },
+
   // Dans sessionService
   getDownloadUrl(sessionId) {
     return `${apiClient.defaults.baseURL}/session/${sessionId}/download`;
